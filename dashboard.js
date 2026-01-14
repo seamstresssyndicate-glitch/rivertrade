@@ -220,10 +220,7 @@ const userState = {
 
 // Initialize managed accounts if not exists
 if (userState.managedAccounts.length === 0) {
-    userState.managedAccounts = [
-        { id: 'acc1', name: 'Premium Growth Account', manager: 'John Smith', balance: 50000, roi: 12.5, status: 'active' },
-        { id: 'acc2', name: 'Conservative Fund', manager: 'Sarah Lee', balance: 30000, roi: 6.2, status: 'active' }
-    ];
+    userState.managedAccounts = [];
     localStorage.setItem('managedAccounts', JSON.stringify(userState.managedAccounts));
 }
 
