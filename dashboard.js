@@ -678,19 +678,8 @@ function updateMainContent(section) {
             content = `
                 <h2>Copy Expert Trading</h2>
                 <div class="experts-grid">
-                    <div class="expert-card">
-                        <img src="images/expert1.jpg" alt="Expert 1" class="expert-avatar">
-                        <h3>John Doe</h3>
-                        <p>Success Rate: 89%</p>
-                        <p>Total Profit: $158,932</p>
-                        <button class="btn-copy" data-expert="exp1">Copy Now</button>
-                    </div>
-                    <div class="expert-card">
-                        <img src="images/expert2.jpg" alt="Expert 2" class="expert-avatar">
-                        <h3>Jane Smith</h3>
-                        <p>Success Rate: 92%</p>
-                        <p>Total Profit: $243,567</p>
-                        <button class="btn-copy" data-expert="exp2">Copy Now</button>
+                    <div style="text-align: center; padding: 40px; color: #999;">
+                        <p>Loading expert traders from API...</p>
                     </div>
                 </div>
             `;
