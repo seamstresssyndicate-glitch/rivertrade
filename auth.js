@@ -1,212 +1,432 @@
+// ============ DOM Elements ============
 const registerTab = document.getElementById("registerTab");
 const loginTab = document.getElementById("loginTab");
 const registerForm = document.getElementById("registerForm");
 const loginForm = document.getElementById("loginForm");
 
-// ============ Real-time reCAPTCHA Verification ============
-async function verifyRecaptcha() {
+// ============ reCAPTCHA v2 Checkbox Verification ============
+function verifyRecaptcha() {
   try {
     if (!window.grecaptcha) {
-      console.warn('reCAPTCHA not loaded yet');
+      console.warn('reCAPTCHA not loaded');
       return false;
     }
 
-    // Use production or test key from window variable
-    const siteKey = window.recaptchaSiteKey || 'YOUR_PRODUCTION_SITE_KEY_HERE';
-    const token = await window.grecaptcha.execute(siteKey, { action: 'submit' });
+    // Get the reCAPTCHA response from the v2 checkbox widget
+    const response = window.grecaptcha.getResponse();
+    
+    if (response && response.length > 0) {
+      console.log('reCAPTCHA verified successfully');
+      return true;
+    }
 
-    // Send token to backend for verification
-    const response = await fetch('/api/verify-captcha', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token })
-    });
-
-    const data = await response.json();
-    return data.success;
+    console.warn('reCAPTCHA checkbox not verified - user must click the checkbox');
+    return false;
   } catch (err) {
     console.error('reCAPTCHA verification error:', err);
     return false;
   }
 }
 
-// ============ Register/Login Handler Updates ============
-
+// ============ Tab Switching ============
 registerTab.addEventListener("click", () => {
-    registerTab.classList.add("active");
-    loginTab.classList.remove("active");
-    registerForm.classList.add("active");
-    loginForm.classList.remove("active");
+  registerTab.classList.add("active");
+  loginTab.classList.remove("active");
+  registerForm.classList.add("active");
+  loginForm.classList.remove("active");
+  // Reset forms when switching tabs
+  registerForm.reset();
+  loginForm.reset();
+  resetMessages();
 });
 
 loginTab.addEventListener("click", () => {
-    loginTab.classList.add("active");
-    registerTab.classList.remove("active");
-    loginForm.classList.add("active");
-    registerForm.classList.remove("active");
+  loginTab.classList.add("active");
+  registerTab.classList.remove("active");
+  loginForm.classList.add("active");
+  registerForm.classList.remove("active");
+  // Reset forms when switching tabs
+  registerForm.reset();
+  loginForm.reset();
+  resetMessages();
 });
 
-// Registration handler: validate, save a simple user record in localStorage (dev only), and redirect to dashboard
-// Registration handler using AuthService
-document.getElementById("registerForm").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const msgEl = document.getElementById('registerMessage');
-    const submitBtn = e.target.querySelector('button[type="submit"]');
-    const pass = document.getElementById("regPassword").value;
-    const confirm = document.getElementById("confirmPassword").value;
+// ============ Helper Functions ============
+function resetMessages() {
+  const msgEl = document.getElementById('registerMessage');
+  const loginMsgEl = document.getElementById('loginMessage');
+  if (msgEl) msgEl.textContent = '';
+  if (loginMsgEl) loginMsgEl.textContent = '';
+}
+
+function showError(messageEl, message) {
+  if (messageEl) {
+    messageEl.textContent = message;
+    messageEl.style.color = '#ff6b6b';
+  }
+}
+
+function showSuccess(messageEl, message) {
+  if (messageEl) {
+    messageEl.textContent = message;
+    messageEl.style.color = '#4caf50';
+  }
+}
+
+// ============ Email Validation ============
+function isValidEmail(email) {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email);
+}
+
+// ============ Password Validation ============
+function isValidPassword(password) {
+  // Minimum 6 characters
+  return password && password.length >= 6;
+}
+
+// ============ Referral Code Validation ============
+const referralCodeInput = document.getElementById('regReferralCode');
+if (referralCodeInput) {
+  let validationTimeout;
+  referralCodeInput.addEventListener('input', async (e) => {
+    const code = e.target.value.trim();
+    const feedback = document.getElementById('referralFeedback');
     
-    if (pass !== confirm) {
-        if (msgEl) msgEl.textContent = 'Passwords do not match.';
-        return;
+    // Clear previous timeout
+    clearTimeout(validationTimeout);
+    
+    if (!code) {
+      if (feedback) feedback.remove();
+      return;
     }
 
-    // Verify reCAPTCHA before registering
-    if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Verifying...'; }
-    const captchaValid = await verifyRecaptcha();
-    
-    if (!captchaValid) {
-        if (msgEl) msgEl.textContent = 'reCAPTCHA verification failed. Please try again.';
-        if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Register'; }
-        return;
-    }
+    // Debounce the validation
+    validationTimeout = setTimeout(async () => {
+      try {
+        // Create feedback element if it doesn't exist
+        let feedbackEl = document.getElementById('referralFeedback');
+        if (!feedbackEl) {
+          feedbackEl = document.createElement('div');
+          feedbackEl.id = 'referralFeedback';
+          feedbackEl.style.fontSize = '0.9em';
+          feedbackEl.style.marginTop = '5px';
+          feedbackEl.style.padding = '8px';
+          feedbackEl.style.borderRadius = '4px';
+          referralCodeInput.parentElement.appendChild(feedbackEl);
+        }
 
-    // Collect form values
+        // Show loading state
+        feedbackEl.textContent = '🔄 Validating...';
+        feedbackEl.style.color = '#999';
+
+        // Validate the referral code
+        const result = await authAPI.validateReferralCode(code);
+        
+        if (result.data && result.data.valid) {
+          feedbackEl.innerHTML = `✅ Valid referral code! You'll receive $${result.data.bonus || 5} welcome bonus from <strong>${result.data.referrerName}</strong>`;
+          feedbackEl.style.color = '#4caf50';
+          feedbackEl.style.backgroundColor = 'rgba(76, 175, 80, 0.1)';
+        } else {
+          feedbackEl.textContent = '❌ Invalid referral code';
+          feedbackEl.style.color = '#541919';
+          feedbackEl.style.backgroundColor = '#e8e2da';
+        }
+      } catch (error) {
+        console.error('Referral validation error:', error);
+        let feedbackEl = document.getElementById('referralFeedback');
+        if (feedbackEl) {
+          feedbackEl.textContent = '⚠️ Could not validate referral code';
+          feedbackEl.style.color = '#0b0b0b';
+          feedbackEl.style.backgroundColor = '#e8e2da';
+        }
+      }
+    }, 500); // Wait 500ms after user stops typing
+  });
+}
+
+// ============ Registration Form Handler ============
+registerForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  
+  const msgEl = document.getElementById('registerMessage');
+  const submitBtn = registerForm.querySelector('button[type="submit"]');
+  
+  // Reset message
+  resetMessages();
+
+  // Get form values
+  const firstName = document.getElementById('regFirstName')?.value.trim() || '';
+  const lastName = document.getElementById('regLastName')?.value.trim() || '';
+  const email = document.getElementById('regEmail')?.value.trim() || '';
+  const country = document.getElementById('regCountry')?.value.trim() || '';
+  const countryCode = document.getElementById('regCountryCode')?.value.trim() || '';
+  const phone = document.getElementById('regPhone')?.value.trim() || '';
+  const currency = document.getElementById('regCurrency')?.value || '';
+  const password = document.getElementById('regPassword')?.value || '';
+  const confirmPassword = document.getElementById('confirmPassword')?.value || '';
+  const referralCode = document.getElementById('regReferralCode')?.value.trim() || '';
+  const wantsBonus = document.getElementById('bonus')?.checked || false;
+
+  // Validation
+  if (!firstName || !lastName) {
+    showError(msgEl, 'First name and last name are required.');
+    return;
+  }
+
+  if (!email) {
+    showError(msgEl, 'Email address is required.');
+    return;
+  }
+
+  if (!isValidEmail(email)) {
+    showError(msgEl, 'Please enter a valid email address.');
+    return;
+  }
+
+  if (!password) {
+    showError(msgEl, 'Password is required.');
+    return;
+  }
+
+  if (!isValidPassword(password)) {
+    showError(msgEl, 'Password must be at least 6 characters long.');
+    return;
+  }
+
+  if (password !== confirmPassword) {
+    showError(msgEl, 'Passwords do not match.');
+    return;
+  }
+
+  if (!country || !countryCode || !phone) {
+    showError(msgEl, 'Country, country code, and phone number are required.');
+    return;
+  }
+
+  if (!currency) {
+    showError(msgEl, 'Please select a currency.');
+    return;
+  }
+
+  // Verify reCAPTCHA
+  if (!verifyRecaptcha()) {
+    showError(msgEl, 'Please complete the reCAPTCHA verification (check the box).');
+    return;
+  }
+
+  // Disable button during submission
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Registering...';
+  }
+
+  try {
+    // Prepare user data
     const user = {
-        firstName: document.getElementById('regFirstName')?.value.trim() || '',
-        lastName: document.getElementById('regLastName')?.value.trim() || '',
-        email: document.getElementById('regEmail')?.value.trim() || '',
-        country: document.getElementById('regCountry')?.value.trim() || '',
-        countryCode: document.getElementById('regCountryCode')?.value.trim() || '',
-        phone: document.getElementById('regPhone')?.value.trim() || '',
-        currency: document.getElementById('regCurrency')?.value || '',
-        wantsBonus: document.getElementById('bonus')?.checked || false,
-        createdAt: new Date().toISOString()
+      firstName,
+      lastName,
+      email,
+      country,
+      countryCode,
+      phone,
+      currency,
+      referralCode: referralCode || null,
+      wantsBonus,
+      createdAt: new Date().toISOString()
     };
 
-    if (!user.email) {
-        if (msgEl) msgEl.textContent = 'Please provide an email address.';
-        if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Register'; }
-        return;
-    }
-
-    if (submitBtn) { submitBtn.textContent = 'Registering...'; }
-    if (msgEl) { msgEl.textContent = ''; }
-    try {
-        // Use global AuthService (dev mock) — if you later wire to real API, replace this call
-        const res = await window.AuthService.register(user, pass);
-        if (msgEl) msgEl.textContent = 'Registration successful — redirecting to dashboard...';
-        // small delay so user sees message
-        setTimeout(() => window.location.href = 'dashboard.html', 700);
-    } catch (err) {
-        console.error('Registration failed', err);
-        if (msgEl) msgEl.textContent = (err && err.message) ? err.message : 'Registration failed';
-    } finally {
-        if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Register'; }
-    }
-});
-
-// Basic login handler that uses AuthService
-document.getElementById('loginForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const email = document.querySelector('#loginForm input[type="email"]')?.value.trim() || '';
-    const password = document.querySelector('#loginForm input[type="password"]')?.value || '';
-    const btn = e.target.querySelector('button[type="submit"]');
-    const msg = document.getElementById('registerMessage');
-    
-    if (!email || !password) { 
-        if (msg) msg.textContent = 'Please provide email and password.'; 
-        return; 
-    }
-    
-    // Verify reCAPTCHA before login
-    if (btn) { btn.disabled = true; btn.textContent = 'Verifying...'; }
-    const captchaValid = await verifyRecaptcha();
-    
-    if (!captchaValid) {
-        if (msg) msg.textContent = 'reCAPTCHA verification failed. Please try again.';
-        if (btn) { btn.disabled = false; btn.textContent = 'Sign In'; }
-        return;
-    }
-    
-    if (btn) { btn.textContent = 'Signing in...'; }
-    try {
-        await window.AuthService.login(email, password);
+    // Register user via AuthService
+    if (window.AuthService && typeof window.AuthService.register === 'function') {
+      await window.AuthService.register(user, password);
+      showSuccess(msgEl, 'Registration successful! Redirecting to dashboard...');
+      setTimeout(() => {
         window.location.href = 'dashboard.html';
-    } catch (err) {
-        if (msg) msg.textContent = (err && err.message) ? err.message : 'Login failed';
-    } finally { if (btn) { btn.disabled = false; btn.textContent = 'Sign In'; } }
+      }, 1000);
+    } else {
+      throw new Error('AuthService not available');
+    }
+  } catch (err) {
+    console.error('Registration error:', err);
+    showError(msgEl, err.message || 'Registration failed. Please try again.');
+    
+    // Re-enable button
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Register';
+    }
+  }
 });
 
-// Activate tab from URL hash (e.g. auth.html#login or auth.html#register)
+// ============ Login Form Handler ============
+loginForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  
+  const msgEl = document.getElementById('loginMessage') || document.getElementById('registerMessage');
+  const submitBtn = loginForm.querySelector('button[type="submit"]');
+  
+  // Reset message
+  resetMessages();
+
+  // Get form values
+  const email = document.querySelector('#loginForm input[type="email"]')?.value.trim() || '';
+  const password = document.querySelector('#loginForm input[type="password"]')?.value || '';
+  const rememberMe = document.getElementById('rememberMe')?.checked || false;
+
+  // Validation
+  if (!email) {
+    showError(msgEl, 'Email address is required.');
+    return;
+  }
+
+  if (!isValidEmail(email)) {
+    showError(msgEl, 'Please enter a valid email address.');
+    return;
+  }
+
+  if (!password) {
+    showError(msgEl, 'Password is required.');
+    return;
+  }
+
+  // Verify reCAPTCHA
+  if (!verifyRecaptcha()) {
+    showError(msgEl, 'Please complete the reCAPTCHA verification (check the box).');
+    return;
+  }
+
+  // Disable button during submission
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Signing in...';
+  }
+
+  try {
+    // Login via AuthService
+    if (window.AuthService && typeof window.AuthService.login === 'function') {
+      await window.AuthService.login(email, password);
+      
+      // Remember me functionality
+      if (rememberMe) {
+        localStorage.setItem('rememberEmail', email);
+      } else {
+        localStorage.removeItem('rememberEmail');
+      }
+
+      showSuccess(msgEl, 'Login successful! Redirecting...');
+      setTimeout(() => {
+        window.location.href = 'dashboard.html';
+      }, 1000);
+    } else {
+      throw new Error('AuthService not available');
+    }
+  } catch (err) {
+    console.error('Login error:', err);
+    showError(msgEl, err.message || 'Login failed. Please check your credentials.');
+    
+    // Re-enable button
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Sign In';
+    }
+  }
+});
+
+// ============ Load Remembered Email ============
+window.addEventListener('DOMContentLoaded', () => {
+  const rememberedEmail = localStorage.getItem('rememberEmail');
+  if (rememberedEmail) {
+    const emailInput = document.querySelector('#loginForm input[type="email"]');
+    if (emailInput) {
+      emailInput.value = rememberedEmail;
+      const rememberCheckbox = document.getElementById('rememberMe');
+      if (rememberCheckbox) {
+        rememberCheckbox.checked = true;
+      }
+    }
+  }
+});
+
+// ============ Tab Activation from URL Hash ============
 (function () {
-    function activateFromHash() {
-        const hash = (location.hash || "").replace('#', '').toLowerCase();
-        if (hash === 'login') {
-            // Use the same click behavior to ensure classes are toggled
-            loginTab.click();
-        } else if (hash === 'register') {
-            registerTab.click();
-        }
+  function activateFromHash() {
+    const hash = (location.hash || "").replace('#', '').toLowerCase();
+    if (hash === 'login') {
+      if (loginTab) loginTab.click();
+    } else if (hash === 'register') {
+      if (registerTab) registerTab.click();
     }
+  }
 
-    // If script is loaded after DOM (it is, since auth.html includes it at bottom), run once
-    try {
-        activateFromHash();
-    } catch (err) {
-        // If elements aren't present yet, listen for DOMContentLoaded
-        document.addEventListener('DOMContentLoaded', activateFromHash);
-    }
+  // Run on page load
+  try {
+    activateFromHash();
+  } catch (err) {
+    document.addEventListener('DOMContentLoaded', activateFromHash);
+  }
 
-    // Also react if the hash changes while the page is open
-    window.addEventListener('hashchange', activateFromHash);
+  // React to hash changes
+  window.addEventListener('hashchange', activateFromHash);
 })();
 
-// reCAPTCHA key resolver: supports production key, local dev test key, and forced dev via query/localStorage
+// ============ reCAPTCHA Initialization ============
 (function () {
-    const TEST_SITEKEY = '6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI';
-    const localHosts = ['localhost', '127.0.0.1', '::1'];
-    const recaptchaEl = document.querySelector('.captcha-container .g-recaptcha');
-    if (!recaptchaEl) return;
+  const TEST_SITEKEY = '6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI';
+  const localHosts = ['localhost', '127.0.0.1', '::1'];
+  
+  // Find all reCAPTCHA containers
+  const recaptchaElements = document.querySelectorAll('.captcha-container .g-recaptcha');
+  
+  if (recaptchaElements.length === 0) return;
 
-    // Read keys from DOM attributes
-    const attrSiteKey = recaptchaEl.getAttribute('data-sitekey') || '';
-    const prodKey = (recaptchaEl.getAttribute('data-prod-sitekey') || '').trim();
+  // Check if we're in dev mode
+  const params = new URLSearchParams(window.location.search);
+  const paramForceDev = params.get('recaptcha_dev') === '1';
+  if (paramForceDev) localStorage.setItem('recaptchaDev', '1');
+  
+  const lsForceDev = localStorage.getItem('recaptchaDev') === '1';
+  const isLocalHost = localHosts.includes(location.hostname) || location.protocol === 'file:';
+  const isDevMode = paramForceDev || lsForceDev || isLocalHost;
 
-    // Support forcing dev mode via query param or localStorage
-    const params = new URLSearchParams(window.location.search);
-    const paramForceDev = params.get('recaptcha_dev') === '1';
-    if (paramForceDev) localStorage.setItem('recaptchaDev', '1');
-    const lsForceDev = localStorage.getItem('recaptchaDev') === '1';
+  // Always use test key for v2 checkbox (requires no backend verification)
+  const chosenKey = TEST_SITEKEY;
 
-    const isLocalHost = localHosts.includes(location.hostname) || location.protocol === 'file:';
-    const isDevMode = paramForceDev || lsForceDev || isLocalHost;
-
-    // Determine which key to use: dev -> TEST_SITEKEY, else prodKey if provided, else attrSiteKey
-    const chosenKey = isDevMode ? TEST_SITEKEY : (prodKey || attrSiteKey);
-
-    const currentKey = recaptchaEl.getAttribute('data-sitekey') || '';
-    if (chosenKey && currentKey !== chosenKey) {
-        if (!recaptchaEl.id) recaptchaEl.id = 'g-recaptcha-' + Math.random().toString(36).slice(2, 9);
-        recaptchaEl.setAttribute('data-sitekey', chosenKey);
-
-        function renderNow() {
-            try {
-                if (window.grecaptcha && typeof grecaptcha.render === 'function') {
-                    recaptchaEl.innerHTML = '';
-                    grecaptcha.render(recaptchaEl.id, { sitekey: chosenKey });
-                }
-            } catch (e) {
-                // ignore
-            }
-        }
-
-        if (window.grecaptcha && typeof grecaptcha.render === 'function') {
-            renderNow();
-        } else {
-            window.addEventListener('load', function () { setTimeout(renderNow, 300); });
-            setTimeout(renderNow, 800);
-        }
+  // Initialize each reCAPTCHA element
+  function renderRecaptcha(element) {
+    try {
+      if (!element.id) {
+        element.id = 'g-recaptcha-' + Math.random().toString(36).slice(2, 9);
+      }
+      
+      if (window.grecaptcha && typeof grecaptcha.render === 'function') {
+        element.innerHTML = ''; // Clear any existing content
+        grecaptcha.render(element.id, {
+          sitekey: chosenKey,
+          theme: 'dark'
+        });
+        console.log('reCAPTCHA rendered for ' + element.id);
+      }
+    } catch (err) {
+      console.error('Failed to render reCAPTCHA:', err);
     }
+  }
 
-    // (dev banner removed) — the script will still switch keys in dev mode but no banner is shown
+  // Wait for grecaptcha to be available
+  function waitForGrecaptcha(callback) {
+    if (window.grecaptcha) {
+      callback();
+    } else {
+      setTimeout(() => waitForGrecaptcha(callback), 100);
+    }
+  }
+
+  // Render all reCAPTCHA elements
+  waitForGrecaptcha(() => {
+    recaptchaElements.forEach(renderRecaptcha);
+  });
+
+  // Also try rendering on page load
+  window.addEventListener('load', () => {
+    recaptchaElements.forEach(renderRecaptcha);
+  });
 })();
